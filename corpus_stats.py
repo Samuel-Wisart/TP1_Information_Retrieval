@@ -8,6 +8,10 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from warcio.archiveiterator import ArchiveIterator
+
+from crawlerlib.html_tools import extract_html_data
+
 
 TOKEN_PATTERN = re.compile(r"\b\w+\b", re.UNICODE)
 
@@ -19,41 +23,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def iter_warc_records(file_path: Path):
-    with gzip.open(file_path, "rb") as handle:
-        while True:
-            line = handle.readline()
-            if not line:
-                break
-            if line != b"WARC/1.0\r\n":
-                continue
-
-            headers: dict[str, str] = {}
-            while True:
-                header_line = handle.readline()
-                if not header_line or header_line == b"\r\n":
-                    break
-                decoded = header_line.decode("utf-8", errors="ignore").rstrip("\r\n")
-                if ": " in decoded:
-                    name, value = decoded.split(": ", 1)
-                    headers[name.lower()] = value
-
-            content_length = int(headers.get("content-length", "0"))
-            payload = handle.read(content_length)
-            handle.readline()
-            handle.readline()
-            yield headers, payload
-
-
-def extract_http_body(payload: bytes) -> bytes:
-    separator = payload.find(b"\r\n\r\n")
-    if separator == -1:
-        return payload
-    return payload[separator + 4 :]
-
-
-def count_tokens(html_bytes: bytes) -> int:
-    text = html_bytes.decode("utf-8", errors="ignore")
+def count_tokens(html_bytes: bytes, base_url: str) -> int:
+    _, text, _ = extract_html_data(html_bytes, base_url)
     return len(TOKEN_PATTERN.findall(text))
 
 
@@ -67,14 +38,23 @@ def main() -> int:
     domains: set[str] = set()
 
     for warc_file in warc_files:
-        for headers, payload in iter_warc_records(warc_file):
-            target_uri = headers.get("warc-target-uri")
-            if not target_uri:
-                continue
-            domain = urlsplit(target_uri).netloc.lower()
-            domains.add(domain)
-            domain_counts[domain] += 1
-            token_counts.append(count_tokens(extract_http_body(payload)))
+        with gzip.open(warc_file, "rb") as handle:
+            for record in ArchiveIterator(handle):
+                if record.rec_type != "response":
+                    continue
+
+                target_uri = record.rec_headers.get_header("WARC-Target-URI")
+                if not target_uri:
+                    continue
+
+                payload = record.content_stream().read()
+                if not payload:
+                    continue
+
+                domain = urlsplit(target_uri).netloc.lower()
+                domains.add(domain)
+                domain_counts[domain] += 1
+                token_counts.append(count_tokens(payload, target_uri))
 
     token_distribution = Counter()
     for count in token_counts:

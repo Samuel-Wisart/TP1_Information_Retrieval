@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit
+
+from url_normalize import url_normalize
 
 
 def normalize_url(url: str, base: str | None = None) -> str | None:
@@ -9,24 +11,17 @@ def normalize_url(url: str, base: str | None = None) -> str | None:
     if not candidate:
         return None
 
-    parts = urlsplit(candidate)
+    try:
+        normalized = url_normalize(candidate)
+    except ValueError:
+        return None
+
+    parts = urlsplit(normalized)
     if parts.scheme.lower() not in {"http", "https"}:
         return None
     if not parts.netloc:
         return None
-
-    scheme = parts.scheme.lower()
-    netloc = parts.netloc.lower()
-    if scheme == "http" and netloc.endswith(":80"):
-        netloc = netloc[:-3]
-    if scheme == "https" and netloc.endswith(":443"):
-        netloc = netloc[:-4]
-
-    path = parts.path or "/"
-    if not path.startswith("/"):
-        path = "/" + path
-    query = parts.query
-    return urlunsplit((scheme, netloc, path, query, ""))
+    return normalized
 
 
 def get_host(url: str) -> str | None:

@@ -1,0 +1,6 @@
+corpus/
+corpus.rar
+.vscode/
+.venv/
+__pycache__/
+*.pyc
