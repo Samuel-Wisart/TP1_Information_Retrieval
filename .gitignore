@@ -1,5 +1,6 @@
 corpus/
 corpus.rar
+corpus.zip
 .vscode/
 .venv/
 __pycache__/

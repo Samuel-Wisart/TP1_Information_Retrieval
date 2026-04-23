@@ -87,7 +87,6 @@ class CrawlManager:
                     self.frontier.join()
                     if self.stop_event.is_set():
                         break
-                    # If no unfinished work remains and queue is empty, the crawl is done.
                     if self.frontier.empty():
                         with self.print_lock:
                             print("[Done] Frontier exhausted, stopping crawler.", flush=True)
