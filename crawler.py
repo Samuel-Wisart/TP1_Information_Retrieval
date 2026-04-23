@@ -87,13 +87,18 @@ class CrawlManager:
                     self.frontier.join()
                     if self.stop_event.is_set():
                         break
-                    time.sleep(0.1)
+                    # If no unfinished work remains and queue is empty, the crawl is done.
+                    if self.frontier.empty():
+                        with self.print_lock:
+                            print("[Done] Frontier exhausted, stopping crawler.", flush=True)
+                        self.stop_event.set()
+                        break
             except KeyboardInterrupt:
                 self.stop_event.set()
             finally:
                 self.stop_event.set()
                 for future in futures:
-                    future.result(timeout=1)
+                    future.result()
 
     def _worker(self) -> None:
         while True:
@@ -196,17 +201,18 @@ class CrawlManager:
             return
 
         pct = min(100, max(0, int((file_records * 100) / file_capacity)))
+        pct_step = (pct // 10) * 10
         last_pct = self.last_progress_by_file.get(file_index, 0)
-        if pct <= last_pct:
+        if pct_step <= last_pct or pct_step == 0:
             return
 
-        self.last_progress_by_file[file_index] = pct
+        self.last_progress_by_file[file_index] = pct_step
         bar_slots = 20
-        filled = int((pct / 100) * bar_slots)
+        filled = int((pct_step / 100) * bar_slots)
         bar = "#" * filled + "-" * (bar_slots - filled)
         with self.print_lock:
             print(
-                f"[WARC {file_index:05d}] [{bar}] {pct}% ({file_records}/{file_capacity})",
+                f"[WARC {file_index:05d}] [{bar}] {pct_step}% ({file_records}/{file_capacity})",
                 flush=True,
             )
 
